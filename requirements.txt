@@ -1,0 +1,9 @@
+beautifulsoup4
+lxml
+Pillow
+python-dotenv
+selenium
+webdriver-manager
+requests
+undetected-chromedriver
+setuptools
