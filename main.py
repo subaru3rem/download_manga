@@ -17,10 +17,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
 import undetected_chromedriver as uc
-
-driver = uc.Chrome()
 
 def file_exists_with_regex(directory, pattern):
     """
@@ -140,7 +138,8 @@ def getmangalivrechaptersimg(chapter_url, chapter_name):
     print("\n  -> Download do capítulo concluído.")
     return images_for_current_pdf
 
-def download_mangalivre(manga_path, output_folder_name, manga_name):
+def download_mangalivre(manga_path, output_folder_name):
+    manga_name = manga_path.replace(' ', '-').lower()
     caps = getmangalivrechapters(manga_name)
     if not os.path.exists(output_folder_name):
         os.makedirs(output_folder_name, exist_ok=True)
@@ -178,10 +177,9 @@ def get_mangadex_chapters(manga_id):
         print(f"Erro ao buscar capítulos: Status code {response.status_code} - {response.text}")
         return {}
     data = response.json()
-    chapters = {
-        chapter["attributes"]["chapter"]: chapter["id"]
-        for chapter in data["data"]
-    }
+    chapters = [
+        (chapter["attributes"]["chapter"], chapter["id"], chapter["attributes"]["volume"]) for chapter in data["data"]
+    ]
     return chapters
 
 def get_mangadex_chapter_images(chapter_id):
@@ -194,9 +192,9 @@ def get_mangadex_chapter_images(chapter_id):
     url = data["baseUrl"]
     images = []
 
-    print(f"  -> Encontradas {len(data["chapter"]["data"])} páginas. Baixando com 'requests'...")
+    print(f"  -> Encontradas {len(data['chapter']['data'])} páginas. Baixando com 'requests'...")
     for page, dt in enumerate(data["chapter"]["data"]):
-        r = requests.get(f"{url}/data/{data["chapter"]["hash"]}/{dt}")
+        r = requests.get(f"{url}/data/{data['chapter']['hash']}/{dt}")
         if r.status_code == 200:
             img_data = io.BytesIO(r.content)
             img = Image.open(img_data)
@@ -219,7 +217,7 @@ def download_mangadex(manga_path, output_folder_name):
         print("Todos os capítulos já foram baixados. Saindo.")
         return
     print(f"Encontrados {len(caps)} capítulos.")
-    for chap_number, chap_id in caps.items():
+    for chap_number, chap_id, chap_vol in caps:
         if file_exists_with_regex(output_folder_name, fr".*Ch\.{int(chap_number):02}\.cbz"):
             print(f"Capítulo {chap_number} já existe. Pulando.")
             continue
@@ -228,7 +226,7 @@ def download_mangadex(manga_path, output_folder_name):
         if len(cap_imgs) == 0:
             print(f"  -> Aviso: Nenhuma imagem baixada para o capítulo {chap_number}. Pulando.")
             continue
-        save_cbz(cap_imgs, f"{int(chap_number):02}", output_folder_name, manga_path)
+        save_cbz(cap_imgs, f"{int(chap_number):02}", output_folder_name, manga_path, chap_vol if chap_vol or chap_vol != '0' else None)
         print(f"  -> Download do capítulo {chap_number} concluído.")
     
 def get_mangapark_url(manga_name):
@@ -325,12 +323,19 @@ def download_mangapark(manga_path, output_folder_name):
         save_cbz(imgs, f"{int(chap_number):02}", output_folder_name, manga_path, volume_number if not volume_number or volume_number != '0' else None)
 
 def main():
+    if len(sys.argv) != 2:
+        print("Erro ao pegar o nome do manga")
+        exit(1)
     load_dotenv()
+    global driver
+    driver = uc.Chrome()
     manga_path = sys.argv[1]
     output_folder_name = os.getenv("MANGA_PATH") + "/" + manga_path.split('/')[-1]
-    manga_name = manga_path.lstrip('/').lower().replace(' ', '-')
     download_mangapark(manga_path, output_folder_name)
+    download_mangadex(manga_path, output_folder_name)
+    download_mangalivre(manga_path, output_folder_name)
+    driver.quit()
+
 
 if __name__ == "__main__":
     main()
-    driver.quit()
