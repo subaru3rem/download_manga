@@ -20,6 +20,19 @@ from selenium.webdriver.support import expected_conditions as EC
 # from webdriver_manager.chrome import ChromeDriverManager
 import undetected_chromedriver as uc
 
+def format_number(number: str):
+    if "." in number:
+        inteiro, decimal = number.split(".")
+        formatted = f"{int(inteiro):02}.{decimal}"
+    elif "," in number:
+        inteiro, decimal = number.split(".")
+        formatted = f"{int(inteiro):02}.{decimal}"
+    else:
+        formatted = f"{int(number):02}"
+    
+    return formatted
+
+
 def file_exists_with_regex(directory, pattern):
     """
     Checks if any file in the given directory matches the provided regex pattern.
@@ -312,7 +325,7 @@ def download_mangapark(manga_path, output_folder_name):
             print(f"  -> Aviso: Número do capítulo não encontrado em {chap_name}. Pulando.")
             continue
         chap_number = chap_number.group().replace('Ch.', '')
-        if file_exists_with_regex(output_folder_name, fr".*Ch\.{int(chap_number):02}\.cbz"):
+        if file_exists_with_regex(output_folder_name, fr".*Ch\.{format_number(chap_number)}\.cbz"):
             print(f"Capítulo {chap_name} já existe. Pulando.")
             continue
         print(f"Baixando capítulo: {chap_name}")
@@ -320,7 +333,7 @@ def download_mangapark(manga_path, output_folder_name):
         if len(imgs) == 0:
             print(f"  -> Aviso: Nenhuma imagem baixada para o capítulo {chap_name}. Pulando.")
             continue
-        save_cbz(imgs, f"{int(chap_number):02}", output_folder_name, manga_path, volume_number if not volume_number or volume_number != '0' else None)
+        save_cbz(imgs, format_number(chap_number), output_folder_name, manga_path, volume_number if not volume_number or volume_number != '0' else None)
 
 def main():
     if len(sys.argv) != 2:
