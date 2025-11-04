@@ -32,7 +32,6 @@ def format_number(number: str):
     
     return formatted
 
-
 def file_exists_with_regex(directory, pattern):
     """
     Checks if any file in the given directory matches the provided regex pattern.
