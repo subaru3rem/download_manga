@@ -77,7 +77,7 @@ def save_cbz(images, chapter_number, output_folder, manga_name, volume_number=No
 
 def get_mangalivre_url(manga_name):
     cookie = os.getenv("MANGA_LIVRE_COOKIE")
-    User_Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+    User_Agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
     url = "https://mangalivre.tv/wp-admin/admin-ajax.php"
     body = {
         "action":"wp-manga-search-manga",
@@ -91,8 +91,7 @@ def get_mangalivre_url(manga_name):
 
     res = requests.post(url, headers=requests_headers, data=body)
     if res.status_code != 200:
-        print("Erro ao pegar url no manga livre")
-        print(str(res.status_code)  + " - " + res.text)
+        print(f"Erro ao pegar url do manga {manga_name}: Status code {res.status_code}")
         return None
 
     data = res.json()
@@ -101,6 +100,23 @@ def get_mangalivre_url(manga_name):
         return None
     
     return data["data"][0]["url"]
+
+def get_manga_livre_chapters_selenium(url):
+    driver.get(url)
+    cookie = os.getenv("MANGA_LIVRE_COOKIE")
+    cookies = [c.strip() for c in cookie.split(';')]
+    for cookie in cookies:
+        name, value = cookie.split("=", 1)
+        driver.add_cookie({"name": name, "value": value})
+    driver.refresh()
+    try:
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "wp-manga-chapter"))
+        )
+    except Exception as e:
+        print(f"  -> Erro ao carregar a página de capítulos: {e}")
+        return None
+    return driver.page_source
 
 def get_mangalivre_chapters(url):
      # ### SELENIUM ### - Usa o driver para abrir a página
@@ -114,8 +130,11 @@ def get_mangalivre_chapters(url):
         req = requests.post(url, headers=requests_headers)
         if req.status_code != 200:
             print(f"Erro ao acessar {url}: Status code {req.status_code}")
-            return {}
-        html_content = req.text
+            html_content = get_manga_livre_chapters_selenium(url)
+            if not html_content:
+                return {}
+        else:
+            html_content = req.text
         soup = BeautifulSoup(html_content, 'lxml')
         chapter_elements = soup.find_all('li', class_='wp-manga-chapter')
 
@@ -458,11 +477,12 @@ def main():
         exit(1)
     load_dotenv()
     global driver
-    driver = uc.Chrome()
+    
+    driver = uc.Chrome(use_subprocess=True, user_multi_procs=True)
     manga_path = sys.argv[1]
     manga_path = manga_path.title()
     output_folder_name = os.getenv("MANGA_PATH") + "/" + manga_path.split('/')[-1]
-    download_mangadex(manga_path, output_folder_name)
+    # download_mangadex(manga_path, output_folder_name)
     download_mangapark(manga_path, output_folder_name)
     download_mangalivre(manga_path, output_folder_name)
     # download_mangafire(manga_path, output_folder_name)
