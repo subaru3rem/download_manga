@@ -19,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 # from webdriver_manager.chrome import ChromeDriverManager
 import undetected_chromedriver as uc
+import seleniumbase as sb
 
 def format_number(number: str):
     if "." in number:
@@ -75,19 +76,37 @@ def save_cbz(images, chapter_number, output_folder, manga_name, volume_number=No
             cbz.writestr(f"{idx+1:03d}.jpg", img_bytes.read())
     return cbz_filename
 
+def get_mangalivre_headers():
+    url = os.getenv("FLARESOLVER_URL")
+    body = {
+        "url": "https://mangalivre.tv/",
+        "maxTimeout": 60000, 
+        "cmd": "request.get"
+    }
+    res = requests.post(url, json=body)
+    if res.status_code != 200:
+        print(f"Erro ao pegar token do manga livre: Status code {res.status_code}")
+        return None
+    data = res.json()
+    if data["status"] != "ok":
+        print(f"Erro ao pegar headers do manga livre: Status code {data['status']}")
+        return None
+    headers = {
+        "User-Agent": data["solution"]["userAgent"],
+        "Cookie": "cf_clearance="+data["solution"]["cookies"][0]["value"]
+    }
+    return headers
+
 def get_mangalivre_url(manga_name):
-    cookie = os.getenv("MANGA_LIVRE_COOKIE")
-    User_Agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
     url = "https://mangalivre.tv/wp-admin/admin-ajax.php"
     body = {
         "action":"wp-manga-search-manga",
         "title":manga_name
 
     }
-    requests_headers = {
-        "User-Agent": User_Agent,
-        "Cookie": cookie
-    }
+    requests_headers = get_mangalivre_headers()
+    if requests_headers == None:
+        return None
 
     res = requests.post(url, headers=requests_headers, data=body)
     if res.status_code != 200:
@@ -101,40 +120,16 @@ def get_mangalivre_url(manga_name):
     
     return data["data"][0]["url"]
 
-def get_manga_livre_chapters_selenium(url):
-    driver.get(url)
-    cookie = os.getenv("MANGA_LIVRE_COOKIE")
-    cookies = [c.strip() for c in cookie.split(';')]
-    for cookie in cookies:
-        name, value = cookie.split("=", 1)
-        driver.add_cookie({"name": name, "value": value})
-    driver.refresh()
-    try:
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "wp-manga-chapter"))
-        )
-    except Exception as e:
-        print(f"  -> Erro ao carregar a página de capítulos: {e}")
-        return None
-    return driver.page_source
-
 def get_mangalivre_chapters(url):
-     # ### SELENIUM ### - Usa o driver para abrir a página
-        cookie = os.getenv("MANGA_LIVRE_COOKIE")
-        User_Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
         url = f"{url}ajax/chapters/?t=1"
-        requests_headers = {
-            "User-Agent": User_Agent,
-            "Cookie": cookie
-        }
+        requests_headers = get_mangalivre_headers()
+        if requests_headers == None:
+            return None
         req = requests.post(url, headers=requests_headers)
         if req.status_code != 200:
-            print(f"Erro ao acessar {url}: Status code {req.status_code}")
-            html_content = get_manga_livre_chapters_selenium(url)
-            if not html_content:
-                return {}
-        else:
-            html_content = req.text
+            return None
+        
+        html_content = req.text
         soup = BeautifulSoup(html_content, 'lxml')
         chapter_elements = soup.find_all('li', class_='wp-manga-chapter')
 
@@ -152,7 +147,9 @@ def get_mangalivre_chapters(url):
         return chapters
 
 def get_mangalivre_chapter_images(chapter_url, chapter_name):
-    cookie = os.getenv("MANGA_LIVRE_COOKIE")
+    cookie = get_mangalivre_headers()["Cookie"]
+    if cookie == None:
+        return []
     driver.get(chapter_url)
     cookies = [c.strip() for c in cookie.split(';')]
     for cookie in cookies:
@@ -297,7 +294,7 @@ def download_mangadex(manga_path, output_folder_name):
 def get_mangapark_url(manga_name):
     base_url = "https://mangapark.net/apo/"
     body = {"query":"query get_searchComic($select: SearchComic_Select) {\n    get_searchComic(\n      select: $select\n    ) {\n      reqPage reqSize reqSort reqWord\n      newPage\n      paging { \n  total pages page init size skip limit prev next\n }\n      items {\n        id data {\n          id dbStatus name\n          origLang tranLang\n          urlPath urlCover600 urlCoverOri\n          genres altNames authors artists\n          is_hot is_new sfw_result\n          score_val follows reviews comments_total\n          max_chapterNode {\n            id data {\n              id dateCreate\n              dbStatus isFinal sfw_result\n              dname urlPath is_new\n              userId userNode {\n                id data {\n                  id name uniq avatarUrl urlPath\n                }\n              }\n            }\n          }\n        }\n        sser_follow\n        sser_lastReadChap {\n          date chapterNode {\n            id data {\n              id dbStatus isFinal sfw_result\n              dname urlPath is_new\n              userId userNode {\n                id data {\n                  id name uniq avatarUrl urlPath\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }",
-"variables":{"select":{"word":manga_name,"size":10,"page":1,"sortby":"field_name"}}}
+        "variables":{"select":{"word":manga_name,"size":10,"page":1,"sortby":"field_name"}}}
     headers = {
         "accept-language": "pt-BR,pt;q=0.9",
         "Cookie": "tfv=1760701601549; theme=mdark; bset=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJiaWQiOiI2OGYyMmRmMzFiOTBjMzBmODZmMmYxZjIiLCJpYXQiOjE3NjIwNzA1MTl9.jt3q9_5gf7vIUXZL83oxlyoaOSSjhP1VPyXc6ibtLD4; cf_clearance=8kBGybs5vmM9HUzF3d1kw6mXptDl.6R7TjkUDN6nxTs-1762074984-1.2.1.1-Hl.GCr.SATp.0tAmeiEWjNHn6kLsgFAwmkXjiRBjXlzrYwQqEkn8lRw.lvBsnnF8Nk34lG_tZX5gX5cRTBgt51BN0tjXOKYcQ33GtAI7gAQdpbnJ_gVPx1_rErQFqv40eFPKNvnClRukLDtrC.45N9vvmV9Gd7HWBpDmE.0qgHTTn5GjsKwAzIC0ExxM4Q7X5T_3esdzB2xVGgPFwJ4zjwOZp._ps90.zPfttq65BZM; wd=513x950"
@@ -478,12 +475,12 @@ def main():
     load_dotenv()
     global driver
     
-    driver = uc.Chrome(use_subprocess=True, user_multi_procs=True)
+    driver = sb.Driver(uc_cdp=True, incognito=True, disable_gpu=True, window_size="1920,1080", no_sandbox=True, headless=True)
     manga_path = sys.argv[1]
     manga_path = manga_path.title()
     output_folder_name = os.getenv("MANGA_PATH") + "/" + manga_path.split('/')[-1]
     # download_mangadex(manga_path, output_folder_name)
-    download_mangapark(manga_path, output_folder_name)
+    # download_mangapark(manga_path, output_folder_name)
     download_mangalivre(manga_path, output_folder_name)
     # download_mangafire(manga_path, output_folder_name)
 
